@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # ==========================================
-# Hysteria 2 终极版
-# 更新：域名模式输出双节点(域名+IP) | 管道兼容
+# Hysteria 2 终极完善版
+# 特性：自定义节点名 | 安装自动展示 | 管道兼容 | 卸载 | 双栈自选
 # ==========================================
 
 # 颜色定义
@@ -56,7 +56,7 @@ save_firewall() {
     fi
 }
 
-# 3. 生成管理菜单 (hy)
+# 3. 生成管理菜单 (hy) - 关键修改：注入节点名称变量
 create_shortcut() {
     cat > $CMD_PATH <<EOF
 #!/bin/bash
@@ -65,8 +65,9 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 PLAIN='\033[0m'
+NODE_NAME="${CUSTOM_NAME}" # 注入安装时设置的名称
 
-# 显示节点信息 (核心修改逻辑)
+# 显示节点信息
 show_node_info() {
     echo -e "\${GREEN}>>> 当前节点配置 \${PLAIN}"
     PORT=\$(grep "^listen:" \$CONFIG_FILE | awk '{print \$2}' | tr -d ':')
@@ -78,7 +79,6 @@ show_node_info() {
     # 判断模式
     if grep -q "insecure: true" \$CONFIG_FILE; then
         # --- 自签模式 ---
-        INSECURE="1"
         FAKE_URL=\$(grep "url:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
         SNI_VAL=\$(echo \$FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*\$||')
         
@@ -89,7 +89,7 @@ show_node_info() {
         echo -e "SNI:  \${YELLOW}\$SNI_VAL\${PLAIN}"
         echo -e "------------------------------------------------"
         
-        LINK="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=1&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-SelfSigned"
+        LINK="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=1&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#\${NODE_NAME}"
         echo -e "\${CYAN}[节点链接]\${PLAIN}"
         echo -e "\${YELLOW}\${LINK}\${PLAIN}"
         
@@ -106,6 +106,47 @@ show_node_info() {
         echo -e "------------------------------------------------"
         
         # 链接1：域名连接
+        LINK_DOMAIN="hysteria2://\${PASS}@\${DOMAIN}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#\${NODE_NAME}"
+        # 链接2：IP连接
+        LINK_IP="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#\${NODE_NAME}_IP"
+
+        echo -e "\${CYAN}1. 域名节点 (推荐):\${PLAIN}"
+        echo -e "\${YELLOW}\${LINK_DOMAIN}\${PLAIN}"
+        echo -e ""
+        echo -e "\${CYAN}2. IP 节点 (备用):\${PLAIN}"
+        echo -e "\${YELLOW}\${LINK_IP}\${PLAIN}"
+    fi
+    echo ""
+}
+
+# 卸载逻辑
+uninstall_logic() {
+    echo -e "\${RED}警告：这将删除 Hysteria2 程序、配置及防火墙规则。\${PLAIN}"
+    read -p "确认卸载? (y/n): " UN_CONFIRM < /dev/tty
+    if [[ "\$UN_CONFIRM" == "y" ]]; then
+        echo -e "\${GREEN}停止服务...\${PLAIN}"
+        if command -v systemctl &>/dev/null; then
+            systemctl stop hysteria-server
+            systemctl disable hysteria-server
+            rm -f /etc/systemd/system/hysteria-server.service
+            systemctl daemon-reload
+        else
+            rc-service hysteria-server stop
+            rc-update del hysteria-server default
+            rm -f /etc/init.d/hysteria-server
+        fi
+        
+        echo -e "\${GREEN}删除文件...\${PLAIN}"
+        rm -rf /etc/hysteria
+        rm -f /usr/local/bin/hysteria
+        rm -f /usr/bin/hy
+        
+        echo -e "\${GREEN}清空防火墙规则...\${PLAIN}"
+        iptables -t nat -F PREROUTING
+        ip6tables -t nat -F PREROUTING
+        
+        if command -v netfilter-persistent &> /dev/null; then
+            ne        # 链接1：域名连接
         LINK_DOMAIN="hysteria2://\${PASS}@\${DOMAIN}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-Domain"
         # 链接2：IP连接
         LINK_IP="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-IP-Backup"
