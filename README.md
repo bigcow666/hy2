@@ -2,6 +2,11 @@
 hy2一键脚本
 
 测试环境deban11 
+在线运行
+<pre><code>bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2)</code></pre>
+
+
+下载运行
 <pre><code>curl -fsSL https://github.com/bigcow666/hy2/tree/main/bigcow/hy2.sh -o hy2.sh && chmod +x hy2.sh && ./hy2.sh
 </code></pre>
 
