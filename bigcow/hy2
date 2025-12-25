@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # ==========================================
-# Hysteria 2 终极完善版
-# 特性：自定义节点名 | 安装自动展示 | 管道兼容 | 卸载 | 双栈自选
+# Hysteria 2 稳定修复版
+# 修复：/usr/bin/hy syntax error 问题
 # ==========================================
 
 # 颜色定义
@@ -40,12 +40,12 @@ check_sys() {
         PM="apk"
         INSTALL_CMD="apk add"
     else
-        echo -e "${RED}不支持的系统，脚本无法运行。${PLAIN}"
+        echo -e "${RED}不支持的系统。${PLAIN}"
         exit 1
     fi
 }
 
-# 2. 保存防火墙规则
+# 2. 保存防火墙
 save_firewall() {
     if [[ "$PM" == "apt" ]]; then
         netfilter-persistent save > /dev/null 2>&1
@@ -56,75 +56,71 @@ save_firewall() {
     fi
 }
 
-# 3. 生成管理菜单 (hy) - 关键修改：注入节点名称变量
+# 3. 生成管理菜单 (使用分段写入法，防止语法错误)
 create_shortcut() {
+    # 第一段：写入变量
     cat > $CMD_PATH <<EOF
 #!/bin/bash
 CONFIG_FILE="/etc/hysteria/config.yaml"
+NODE_NAME="${CUSTOM_NAME}"
+EOF
+
+    # 第二段：写入逻辑 (使用 'EOF' 防止转义错误)
+    cat >> $CMD_PATH <<'EOF'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 PLAIN='\033[0m'
-NODE_NAME="${CUSTOM_NAME}" # 注入安装时设置的名称
 
-# 显示节点信息
 show_node_info() {
-    echo -e "\${GREEN}>>> 当前节点配置 \${PLAIN}"
-    PORT=\$(grep "^listen:" \$CONFIG_FILE | awk '{print \$2}' | tr -d ':')
-    PASS=\$(grep -A 5 "auth:" \$CONFIG_FILE | grep "password:" | head -n 1 | awk '{print \$2}')
-    OBFS_PASS=\$(grep -A 2 "salamander:" \$CONFIG_FILE | grep "password:" | head -n 1 | awk '{print \$2}')
-    NET_MODE=\$(grep "mode:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
-    SERVER_IP=\$(curl -s4 ifconfig.me)
+    echo -e "${GREEN}>>> 当前节点配置 ${PLAIN}"
+    PORT=$(grep "^listen:" $CONFIG_FILE | awk '{print $2}' | tr -d ':')
+    PASS=$(grep -A 5 "auth:" $CONFIG_FILE | grep "password:" | head -n 1 | awk '{print $2}')
+    OBFS_PASS=$(grep -A 2 "salamander:" $CONFIG_FILE | grep "password:" | head -n 1 | awk '{print $2}')
+    SERVER_IP=$(curl -s4 ifconfig.me)
 
-    # 判断模式
-    if grep -q "insecure: true" \$CONFIG_FILE; then
-        # --- 自签模式 ---
-        FAKE_URL=\$(grep "url:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
-        SNI_VAL=\$(echo \$FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*\$||')
+    if grep -q "insecure: true" $CONFIG_FILE; then
+        # 自签模式
+        FAKE_URL=$(grep "url:" $CONFIG_FILE | head -n 1 | awk '{print $2}')
+        SNI_VAL=$(echo $FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*$||')
         
-        echo -e "模式: \${YELLOW}自签证书 (IP直连)\${PLAIN}"
-        echo -e "IP:   \${YELLOW}\$SERVER_IP\${PLAIN}"
-        echo -e "端口: \${YELLOW}\$PORT\${PLAIN}"
-        echo -e "密码: \${YELLOW}\$PASS\${PLAIN}"
-        echo -e "SNI:  \${YELLOW}\$SNI_VAL\${PLAIN}"
+        echo -e "模式: ${YELLOW}自签证书${PLAIN}"
+        echo -e "IP:   ${YELLOW}${SERVER_IP}${PLAIN}"
+        echo -e "端口: ${YELLOW}${PORT}${PLAIN}"
+        echo -e "密码: ${YELLOW}${PASS}${PLAIN}"
         echo -e "------------------------------------------------"
-        
-        LINK="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=1&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#\${NODE_NAME}"
-        echo -e "\${CYAN}[节点链接]\${PLAIN}"
-        echo -e "\${YELLOW}\${LINK}\${PLAIN}"
-        
+        LINK="hysteria2://${PASS}@${SERVER_IP}:${PORT}?peer=${SNI_VAL}&insecure=1&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}#${NODE_NAME}"
+        echo -e "${CYAN}[自签节点链接]${PLAIN}"
+        echo -e "${YELLOW}${LINK}${PLAIN}"
     else
-        # --- 域名模式 ---
-        DOMAIN=\$(grep -A 1 "domains:" \$CONFIG_FILE | tail -n 1 | tr -d ' -')
-        SNI_VAL=\$DOMAIN
+        # 域名模式
+        DOMAIN=$(grep -A 1 "domains:" $CONFIG_FILE | tail -n 1 | tr -d ' -')
+        SNI_VAL=$DOMAIN
         
-        echo -e "模式: \${YELLOW}正规域名证书 (ACME)\${PLAIN}"
-        echo -e "域名: \${YELLOW}\$DOMAIN\${PLAIN}"
-        echo -e "IP:   \${YELLOW}\$SERVER_IP\${PLAIN}"
-        echo -e "端口: \${YELLOW}\$PORT\${PLAIN}"
-        echo -e "密码: \${YELLOW}\$PASS\${PLAIN}"
+        echo -e "模式: ${YELLOW}域名证书${PLAIN}"
+        echo -e "域名: ${YELLOW}${DOMAIN}${PLAIN}"
+        echo -e "IP:   ${YELLOW}${SERVER_IP}${PLAIN}"
+        echo -e "端口: ${YELLOW}${PORT}${PLAIN}"
+        echo -e "密码: ${YELLOW}${PASS}${PLAIN}"
         echo -e "------------------------------------------------"
         
-        # 链接1：域名连接
-        LINK_DOMAIN="hysteria2://\${PASS}@\${DOMAIN}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#\${NODE_NAME}"
-        # 链接2：IP连接
-        LINK_IP="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#\${NODE_NAME}_IP"
+        LINK_DOMAIN="hysteria2://${PASS}@${DOMAIN}:${PORT}?peer=${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}#${NODE_NAME}"
+        LINK_IP="hysteria2://${PASS}@${SERVER_IP}:${PORT}?peer=${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}#${NODE_NAME}_IP"
 
-        echo -e "\${CYAN}1. 域名节点 (推荐):\${PLAIN}"
-        echo -e "\${YELLOW}\${LINK_DOMAIN}\${PLAIN}"
+        echo -e "${CYAN}1. 域名节点 (推荐):${PLAIN}"
+        echo -e "${YELLOW}${LINK_DOMAIN}${PLAIN}"
         echo -e ""
-        echo -e "\${CYAN}2. IP 节点 (备用):\${PLAIN}"
-        echo -e "\${YELLOW}\${LINK_IP}\${PLAIN}"
+        echo -e "${CYAN}2. IP 节点 (备用):${PLAIN}"
+        echo -e "${YELLOW}${LINK_IP}${PLAIN}"
     fi
     echo ""
 }
 
-# 卸载逻辑
 uninstall_logic() {
-    echo -e "\${RED}警告：这将删除 Hysteria2 程序、配置及防火墙规则。\${PLAIN}"
+    echo -e "${RED}警告：这将删除 Hysteria2 程序、配置及防火墙规则。${PLAIN}"
     read -p "确认卸载? (y/n): " UN_CONFIRM < /dev/tty
-    if [[ "\$UN_CONFIRM" == "y" ]]; then
-        echo -e "\${GREEN}停止服务...\${PLAIN}"
+    if [[ "$UN_CONFIRM" == "y" ]]; then
+        echo -e "${GREEN}停止服务...${PLAIN}"
         if command -v systemctl &>/dev/null; then
             systemctl stop hysteria-server
             systemctl disable hysteria-server
@@ -132,72 +128,32 @@ uninstall_logic() {
             systemctl daemon-reload
         else
             rc-service hysteria-server stop
-            rc-update del hysteria-server default
             rm -f /etc/init.d/hysteria-server
         fi
         
-        echo -e "\${GREEN}删除文件...\${PLAIN}"
         rm -rf /etc/hysteria
         rm -f /usr/local/bin/hysteria
         rm -f /usr/bin/hy
         
-        echo -e "\${GREEN}清空防火墙规则...\${PLAIN}"
         iptables -t nat -F PREROUTING
         ip6tables -t nat -F PREROUTING
         
-        if command -v netfilter-persistent &> /dev/null; then
-            ne        # 链接1：域名连接
-        LINK_DOMAIN="hysteria2://\${PASS}@\${DOMAIN}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-Domain"
-        # 链接2：IP连接
-        LINK_IP="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-IP-Backup"
-
-        echo -e "\${CYAN}1. 域名节点 (推荐，防DNS污染请在客户端设Host):\${PLAIN}"
-        echo -e "\${YELLOW}\${LINK_DOMAIN}\${PLAIN}"
-        echo -e ""
-        echo -e "\${CYAN}2. IP 节点 (备用，直接连接IP):\${PLAIN}"
-        echo -e "\${YELLOW}\${LINK_IP}\${PLAIN}"
-    fi
-    echo ""
-}
-
-# 卸载逻辑
-uninstall_logic() {
-    echo -e "\${RED}警告：这将删除 Hysteria2 程序、配置及防火墙规则。\${PLAIN}"
-    read -p "确认卸载? (y/n): " UN_CONFIRM < /dev/tty
-    if [[ "\$UN_CONFIRM" == "y" ]]; then
-        echo -e "\${GREEN}停止服务...\${PLAIN}"
-        if command -v systemctl &>/dev/null; then
-            systemctl stop hysteria-server
-            systemctl disable hysteria-server
-            rm -f /etc/systemd/system/hysteria-server.service
-            systemctl daemon-reload
-        else
-            rc-service hysteria-server stop
-            rc-update del hysteria-server default
-            rm -f /etc/init.d/hysteria-server
-        fi
-        
-        echo -e "\${GREEN}删除文件...\${PLAIN}"
-        rm -rf /etc/hysteria
-        rm -f /usr/local/bin/hysteria
-        rm -f /usr/bin/hy
-        
-        echo -e "\${GREEN}清空防火墙规则...\${PLAIN}"
-        iptables -t nat -F PREROUTING
-        ip6tables -t nat -F PREROUTING
-        
+        # 尝试保存防火墙
         if command -v netfilter-persistent &> /dev/null; then
             netfilter-persistent save > /dev/null 2>&1
         elif [ -f "/etc/init.d/iptables" ]; then
             /etc/init.d/iptables save > /dev/null 2>&1
-        elif command -v service &> /dev/null; then
-            service iptables save > /dev/null 2>&1
         fi
 
-        echo -e "\${GREEN}卸载完成。\${PLAIN}"
+        echo -e "${GREEN}卸载完成。${PLAIN}"
         exit 0
     fi
 }
+
+if [[ "$1" == "info" ]]; then
+    show_node_info
+    exit 0
+fi
 
 echo -e "========================="
 echo -e "   Hysteria 2 管理面板   "
@@ -212,13 +168,13 @@ echo -e "0) 退出"
 echo -e "========================="
 read -p "请选择: " OPTION < /dev/tty
 
-case \$OPTION in
+case $OPTION in
     1) if command -v systemctl &>/dev/null; then systemctl status hysteria-server --no-pager; else /etc/init.d/hysteria-server status; fi ;;
     2) show_node_info ;;
-    3) nano \$CONFIG_FILE && echo "修改后请重启服务(选项4)" ;;
+    3) nano $CONFIG_FILE && echo "修改后请重启服务(选项4)" ;;
     4) 
        if command -v systemctl &>/dev/null; then 
-           systemctl restart hysteria-server && echo -e "\${GREEN}重启成功\${PLAIN}"; 
+           systemctl restart hysteria-server && echo -e "${GREEN}重启成功${PLAIN}"; 
        else 
            rc-service hysteria-server restart; 
        fi 
@@ -238,14 +194,14 @@ EOF
 
 clear
 check_sys
-echo -e "${CYAN}Hysteria 2 安装脚本 (多节点输出 | 管道兼容)${PLAIN}"
+echo -e "${CYAN}Hysteria 2 安装脚本 (修复稳定版)${PLAIN}"
 echo -e "${CYAN}当前系统: ${OS} (${PM})${PLAIN}"
 
 # --- 1. 证书模式 ---
 echo -e "------------------------------------------------"
-echo -e "${YELLOW}[1/5] 证书模式${PLAIN}"
-echo -e "1) 自签证书 (仅生成 IP 节点)"
-echo -e "2) 域名证书 (生成 域名+IP 双节点)"
+echo -e "${YELLOW}[1/6] 证书模式${PLAIN}"
+echo -e "1) 自签证书"
+echo -e "2) 域名证书"
 read -p "选择 (默认1): " CERT_MODE < /dev/tty
 [[ -z "$CERT_MODE" ]] && CERT_MODE="1"
 
@@ -263,13 +219,8 @@ read -p "设置端口 (默认 443): " PORT < /dev/tty
 
 # --- 3. 伪装域名 ---
 echo -e "------------------------------------------------"
-echo -e "${CYAN}常用伪装域名 (可直接复制):${PLAIN}"
-echo -e "1. ${GREEN}www.bing.com${PLAIN}"
-echo -e "2. ${GREEN}www.tesla.com${PLAIN}"
-echo -e "3. ${GREEN}www.apple.com${PLAIN}"
-echo -e "4. ${GREEN}www.amazon.com${PLAIN}"
-echo -e "------------------------------------------------"
-read -p "请输入伪装域名 (回车默认 www.bing.com): " MASQ_DOMAIN < /dev/tty
+echo -e "${CYAN}常用伪装域名:${PLAIN} www.bing.com, www.tesla.com"
+read -p "请输入伪装域名 (默认 www.bing.com): " MASQ_DOMAIN < /dev/tty
 [[ -z "$MASQ_DOMAIN" ]] && MASQ_DOMAIN="www.bing.com"
 
 # --- 4. 端口跳跃 ---
@@ -280,47 +231,50 @@ read -p "起始端口 (默认 35000): " HOP_START < /dev/tty
 read -p "结束端口 (默认 36000): " HOP_END < /dev/tty
 [[ -z "$HOP_END" ]] && HOP_END="36000"
 
-# --- 5. 出站网络选择 ---
+# --- 5. 出站网络 ---
 echo -e "------------------------------------------------"
-echo -e "${YELLOW}[5/5] 出站网络偏好 (Outbound Mode)${PLAIN}"
-echo -e "1) ${GREEN}IPv4 优先${PLAIN}"
-echo -e "2) ${GREEN}IPv6 优先${PLAIN}"
-echo -e "3) ${GREEN}自动双栈 (Auto)${PLAIN}"
-read -p "请选择 [1-3] (默认1): " NET_CHOICE < /dev/tty
+echo -e "${YELLOW}[5/6] 出站网络偏好${PLAIN}"
+echo -e "1) IPv4 优先"
+echo -e "2) IPv6 优先"
+echo -e "3) 自动双栈 (Auto)"
+read -p "请选择 (默认1): " NET_CHOICE < /dev/tty
 case $NET_CHOICE in
     2) OUT_MODE="6" ;;
     3) OUT_MODE="auto" ;;
     *) OUT_MODE="4" ;;
 esac
 
+# --- 6. 节点名称 ---
+echo -e "------------------------------------------------"
+echo -e "${YELLOW}[6/6] 节点名称设置${PLAIN}"
+read -p "请输入节点名称 (默认 Hy2-Node): " CUSTOM_NAME < /dev/tty
+[[ -z "$CUSTOM_NAME" ]] && CUSTOM_NAME="Hy2-Node"
+
 # --- 开始安装 ---
-echo -e "${GREEN}>>> 正在安装依赖 ($PM)...${PLAIN}"
+echo -e "${GREEN}>>> 安装依赖 ($PM)...${PLAIN}"
 case $PM in
     apt) $INSTALL_CMD curl openssl iptables iptables-persistent netfilter-persistent ;;
     dnf|yum) $INSTALL_CMD curl openssl iptables iptables-services; systemctl enable --now iptables ;;
     apk) $INSTALL_CMD curl openssl iptables ip6tables nano ;;
 esac
 
-echo -e "${GREEN}>>> 下载 Hysteria 2 核心...${PLAIN}"
+echo -e "${GREEN}>>> 下载核心...${PLAIN}"
 HYSTERIA_USER=root bash <(curl -fsSL https://get.hy2.sh/)
 
-echo -e "${GREEN}>>> 生成配置文件...${PLAIN}"
+echo -e "${GREEN}>>> 生成配置...${PLAIN}"
 PASSWORD=$(cat /proc/sys/kernel/random/uuid)
 OBFS_PASSWORD=$(openssl rand -hex 8)
 mkdir -p $CERT_DIR
 
 cat > $CONFIG_FILE <<EOF
 listen: :$PORT
-
 auth:
   type: password
   password: $PASSWORD
-
 obfs:
   type: salamander
   salamander:
     password: $OBFS_PASSWORD
-
 quic:
   initStreamReceiveWindow: 8388608
   maxStreamReceiveWindow: 8388608
@@ -329,7 +283,6 @@ quic:
   maxIdleTimeout: 30s
   maxIncomingStreams: 1024
   disablePathMTUDiscovery: false
-
 speedTest: true
 disableUDP: false
 udpIdleTimeout: 60s
@@ -379,7 +332,7 @@ EOF
 fi
 
 # --- 防火墙 ---
-echo -e "${GREEN}>>> 配置 iptables 端口转发...${PLAIN}"
+echo -e "${GREEN}>>> 配置端口转发...${PLAIN}"
 iptables -t nat -F PREROUTING
 ip6tables -t nat -F PREROUTING
 iptables -t nat -A PREROUTING -p udp --dport $HOP_START:$HOP_END -j REDIRECT --to-ports $PORT
@@ -407,7 +360,11 @@ fi
 
 create_shortcut
 
-echo -e "${GREEN}安装完成！${PLAIN}"
-echo -e "输入 ${YELLOW}hy${PLAIN} 打开管理/卸载面板。"
+# --- 结束 ---
+clear
+echo -e "${GREEN}=========================================${PLAIN}"
+echo -e "${GREEN}      安装完成！(Install Complete)       ${PLAIN}"
+echo -e "${GREEN}=========================================${PLAIN}"
+echo -e "输入 ${YELLOW}hy${PLAIN} 再次查看。"
 sleep 1
-hy <<< "2"
+hy info
