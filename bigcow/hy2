@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # ==========================================
-# Hysteria 2 终极版 (管道兼容/Pipe-Safe)
-# 特性：支持 curl | bash 运行，保留所有原有功能
+# Hysteria 2 终极版
+# 更新：域名模式输出双节点(域名+IP) | 管道兼容
 # ==========================================
 
 # 颜色定义
@@ -23,12 +23,10 @@ check_sys() {
         echo -e "${RED}错误: 必须使用 root 用户运行此脚本！${PLAIN}"
         exit 1
     fi
-    
     if [ -f /etc/os-release ]; then
         source /etc/os-release
         OS=$ID
     fi
-
     if command -v apt-get &> /dev/null; then
         PM="apt"
         INSTALL_CMD="apt-get install -y"
@@ -42,7 +40,7 @@ check_sys() {
         PM="apk"
         INSTALL_CMD="apk add"
     else
-        echo -e "${RED}未检测到支持的包管理器，脚本无法运行。${PLAIN}"
+        echo -e "${RED}不支持的系统，脚本无法运行。${PLAIN}"
         exit 1
     fi
 }
@@ -68,50 +66,65 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 PLAIN='\033[0m'
 
-# 显示节点信息
+# 显示节点信息 (核心修改逻辑)
 show_node_info() {
     echo -e "\${GREEN}>>> 当前节点配置 \${PLAIN}"
     PORT=\$(grep "^listen:" \$CONFIG_FILE | awk '{print \$2}' | tr -d ':')
     PASS=\$(grep -A 5 "auth:" \$CONFIG_FILE | grep "password:" | head -n 1 | awk '{print \$2}')
     OBFS_PASS=\$(grep -A 2 "salamander:" \$CONFIG_FILE | grep "password:" | head -n 1 | awk '{print \$2}')
     NET_MODE=\$(grep "mode:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
-
-    if grep -q "insecure: true" \$CONFIG_FILE; then
-        INSECURE="1"
-        SHOW_INSECURE="true (自签)"
-        FAKE_URL=\$(grep "url:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
-        DOMAIN=\$(echo \$FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*\$||')
-        SNI_VAL=\$DOMAIN
-    else
-        INSECURE="0"
-        SHOW_INSECURE="false (正规证书)"
-        DOMAIN=\$(grep -A 1 "domains:" \$CONFIG_FILE | tail -n 1 | tr -d ' -')
-        SNI_VAL=\$DOMAIN
-    fi
-    
     SERVER_IP=\$(curl -s4 ifconfig.me)
 
-    echo -e "地址: \${YELLOW}\$SERVER_IP\${PLAIN}"
-    echo -e "端口: \${YELLOW}\$PORT\${PLAIN}"
-    echo -e "密码: \${YELLOW}\$PASS\${PLAIN}"
-    echo -e "混淆: \${YELLOW}\$OBFS_PASS\${PLAIN}"
-    echo -e "SNI : \${YELLOW}\$SNI_VAL\${PLAIN}"
-    echo -e "出站: \${YELLOW}\$NET_MODE\${PLAIN}"
-    echo -e "------------------------------------------------"
-    
-    HY2_LINK="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=\${INSECURE}&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-Node"
-    echo -e "\${CYAN}导入链接 (v2rayN/NekoBox):\${PLAIN}"
-    echo -e "\${YELLOW}\${HY2_LINK}\${PLAIN}"
+    # 判断模式
+    if grep -q "insecure: true" \$CONFIG_FILE; then
+        # --- 自签模式 ---
+        INSECURE="1"
+        FAKE_URL=\$(grep "url:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
+        SNI_VAL=\$(echo \$FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*\$||')
+        
+        echo -e "模式: \${YELLOW}自签证书 (IP直连)\${PLAIN}"
+        echo -e "IP:   \${YELLOW}\$SERVER_IP\${PLAIN}"
+        echo -e "端口: \${YELLOW}\$PORT\${PLAIN}"
+        echo -e "密码: \${YELLOW}\$PASS\${PLAIN}"
+        echo -e "SNI:  \${YELLOW}\$SNI_VAL\${PLAIN}"
+        echo -e "------------------------------------------------"
+        
+        LINK="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=1&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-SelfSigned"
+        echo -e "\${CYAN}[节点链接]\${PLAIN}"
+        echo -e "\${YELLOW}\${LINK}\${PLAIN}"
+        
+    else
+        # --- 域名模式 ---
+        DOMAIN=\$(grep -A 1 "domains:" \$CONFIG_FILE | tail -n 1 | tr -d ' -')
+        SNI_VAL=\$DOMAIN
+        
+        echo -e "模式: \${YELLOW}正规域名证书 (ACME)\${PLAIN}"
+        echo -e "域名: \${YELLOW}\$DOMAIN\${PLAIN}"
+        echo -e "IP:   \${YELLOW}\$SERVER_IP\${PLAIN}"
+        echo -e "端口: \${YELLOW}\$PORT\${PLAIN}"
+        echo -e "密码: \${YELLOW}\$PASS\${PLAIN}"
+        echo -e "------------------------------------------------"
+        
+        # 链接1：域名连接
+        LINK_DOMAIN="hysteria2://\${PASS}@\${DOMAIN}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-Domain"
+        # 链接2：IP连接
+        LINK_IP="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-IP-Backup"
+
+        echo -e "\${CYAN}1. 域名节点 (推荐，防DNS污染请在客户端设Host):\${PLAIN}"
+        echo -e "\${YELLOW}\${LINK_DOMAIN}\${PLAIN}"
+        echo -e ""
+        echo -e "\${CYAN}2. IP 节点 (备用，直接连接IP):\${PLAIN}"
+        echo -e "\${YELLOW}\${LINK_IP}\${PLAIN}"
+    fi
     echo ""
 }
 
 # 卸载逻辑
 uninstall_logic() {
     echo -e "\${RED}警告：这将删除 Hysteria2 程序、配置及防火墙规则。\${PLAIN}"
-    # 强制从终端读取输入
     read -p "确认卸载? (y/n): " UN_CONFIRM < /dev/tty
     if [[ "\$UN_CONFIRM" == "y" ]]; then
-        echo -e "\${GREEN}正在停止服务...\${PLAIN}"
+        echo -e "\${GREEN}停止服务...\${PLAIN}"
         if command -v systemctl &>/dev/null; then
             systemctl stop hysteria-server
             systemctl disable hysteria-server
@@ -128,7 +141,7 @@ uninstall_logic() {
         rm -f /usr/local/bin/hysteria
         rm -f /usr/bin/hy
         
-        echo -e "\${GREEN}清空 NAT 转发规则...\${PLAIN}"
+        echo -e "\${GREEN}清空防火墙规则...\${PLAIN}"
         iptables -t nat -F PREROUTING
         ip6tables -t nat -F PREROUTING
         
@@ -140,7 +153,7 @@ uninstall_logic() {
             service iptables save > /dev/null 2>&1
         fi
 
-        echo -e "\${GREEN}卸载完成，环境已恢复。\${PLAIN}"
+        echo -e "\${GREEN}卸载完成。\${PLAIN}"
         exit 0
     fi
 }
@@ -184,16 +197,14 @@ EOF
 
 clear
 check_sys
-echo -e "${CYAN}Hysteria 2 安装脚本 (UUID密码 | 出站自选 | 管道兼容)${PLAIN}"
+echo -e "${CYAN}Hysteria 2 安装脚本 (多节点输出 | 管道兼容)${PLAIN}"
 echo -e "${CYAN}当前系统: ${OS} (${PM})${PLAIN}"
-
-# 注意：所有 read 必须加 < /dev/tty 才能在管道模式下工作
 
 # --- 1. 证书模式 ---
 echo -e "------------------------------------------------"
 echo -e "${YELLOW}[1/5] 证书模式${PLAIN}"
-echo -e "1) 自签证书 (IP直连，无域名，生成 insecure 链接)"
-echo -e "2) 域名证书 (自动申请 ACME，需域名解析)"
+echo -e "1) 自签证书 (仅生成 IP 节点)"
+echo -e "2) 域名证书 (生成 域名+IP 双节点)"
 read -p "选择 (默认1): " CERT_MODE < /dev/tty
 [[ -z "$CERT_MODE" ]] && CERT_MODE="1"
 
