@@ -3,8 +3,8 @@ hy2一键脚本
 
 测试环境deban11 
 
-'curl -fsSL https://github.com/bigcow666/hy2/tree/main/bigcow/hy2.sh -o hy2.sh && chmod +x hy2.sh && ./hy2.sh'''
-
+\`\`\`curl -fsSL https://github.com/bigcow666/hy2/tree/main/bigcow/hy2.sh -o hy2.sh && chmod +x hy2.sh && ./hy2.sh
+\`\`\`
 安装后默认开启命令 hy  进入管理菜单
 声明:本脚本完全基于apernet官方开源hysteria制作
 主要是为了自用方便，如引人不适，我自行删除。
