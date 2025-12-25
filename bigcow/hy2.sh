@@ -1,0 +1,367 @@
+#!/bin/bash
+
+# ==========================================
+# Hysteria 2 全能版
+# 特性：UUID密码 | 出站自选(v4/v6/Auto) | 卸载 | 全系统支持
+# ==========================================
+
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+PLAIN='\033[0m'
+
+# 全局变量
+CONFIG_FILE="/etc/hysteria/config.yaml"
+CERT_DIR="/etc/hysteria/certs"
+CMD_PATH="/usr/bin/hy"
+
+# 1. 系统检测 (回答你的问题：是的，它支持多种服务器)
+check_sys() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${RED}错误: 必须使用 root 用户运行此脚本！${PLAIN}"
+        exit 1
+    fi
+    
+    # 简单的系统探测
+    if [ -f /etc/os-release ]; then
+        source /etc/os-release
+        OS=$ID
+    fi
+
+    # 根据包管理器判断系统类型
+    if command -v apt-get &> /dev/null; then
+        PM="apt"
+        INSTALL_CMD="apt-get install -y"
+    elif command -v dnf &> /dev/null; then
+        PM="dnf"
+        INSTALL_CMD="dnf install -y"
+    elif command -v yum &> /dev/null; then
+        PM="yum"
+        INSTALL_CMD="yum install -y"
+    elif command -v apk &> /dev/null; then
+        PM="apk"
+        INSTALL_CMD="apk add"
+    else
+        echo -e "${RED}未检测到支持的包管理器 (apt/dnf/yum/apk)，脚本无法运行。${PLAIN}"
+        exit 1
+    fi
+}
+
+# 2. 保存防火墙规则
+save_firewall() {
+    if [[ "$PM" == "apt" ]]; then
+        netfilter-persistent save > /dev/null 2>&1
+    elif [[ "$PM" == "dnf" ]] || [[ "$PM" == "yum" ]]; then
+        service iptables save > /dev/null 2>&1
+    elif [[ "$PM" == "apk" ]]; then
+        /etc/init.d/iptables save > /dev/null 2>&1
+    fi
+}
+
+# 3. 生成管理菜单 (hy)
+create_shortcut() {
+    cat > $CMD_PATH <<EOF
+#!/bin/bash
+CONFIG_FILE="/etc/hysteria/config.yaml"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+PLAIN='\033[0m'
+
+# 显示节点信息
+show_node_info() {
+    echo -e "\${GREEN}>>> 当前节点配置 \${PLAIN}"
+    PORT=\$(grep "^listen:" \$CONFIG_FILE | awk '{print \$2}' | tr -d ':')
+    PASS=\$(grep -A 5 "auth:" \$CONFIG_FILE | grep "password:" | head -n 1 | awk '{print \$2}')
+    OBFS_PASS=\$(grep -A 2 "salamander:" \$CONFIG_FILE | grep "password:" | head -n 1 | awk '{print \$2}')
+    
+    # 提取网络模式
+    NET_MODE=\$(grep "mode:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
+
+    if grep -q "insecure: true" \$CONFIG_FILE; then
+        INSECURE="1"
+        SHOW_INSECURE="true (自签)"
+        FAKE_URL=\$(grep "url:" \$CONFIG_FILE | head -n 1 | awk '{print \$2}')
+        DOMAIN=\$(echo \$FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*\$||')
+        SNI_VAL=\$DOMAIN
+    else
+        INSECURE="0"
+        SHOW_INSECURE="false (正规证书)"
+        DOMAIN=\$(grep -A 1 "domains:" \$CONFIG_FILE | tail -n 1 | tr -d ' -')
+        SNI_VAL=\$DOMAIN
+    fi
+    
+    SERVER_IP=\$(curl -s4 ifconfig.me)
+
+    echo -e "地址: \${YELLOW}\$SERVER_IP\${PLAIN}"
+    echo -e "端口: \${YELLOW}\$PORT\${PLAIN}"
+    echo -e "密码: \${YELLOW}\$PASS\${PLAIN}"
+    echo -e "混淆: \${YELLOW}\$OBFS_PASS\${PLAIN}"
+    echo -e "SNI : \${YELLOW}\$SNI_VAL\${PLAIN}"
+    echo -e "出站: \${YELLOW}\$NET_MODE\${PLAIN}"
+    echo -e "------------------------------------------------"
+    
+    HY2_LINK="hysteria2://\${PASS}@\${SERVER_IP}:\${PORT}?peer=\${SNI_VAL}&insecure=\${INSECURE}&obfs=salamander&obfs-password=\${OBFS_PASS}&sni=\${SNI_VAL}#Hy2-Node"
+    echo -e "\${CYAN}导入链接 (v2rayN/NekoBox):\${PLAIN}"
+    echo -e "\${YELLOW}\${HY2_LINK}\${PLAIN}"
+    echo ""
+}
+
+# 卸载逻辑嵌入
+uninstall_logic() {
+    echo -e "\${RED}警告：这将删除 Hysteria2 程序、配置文件及防火墙转发规则。\${PLAIN}"
+    echo -e "\${YELLOW}注意：此操作不会删除原本的安装脚本文件。\${PLAIN}"
+    read -p "确认卸载? (y/n): " UN_CONFIRM
+    if [[ "\$UN_CONFIRM" == "y" ]]; then
+        echo -e "\${GREEN}正在停止服务...\${PLAIN}"
+        if command -v systemctl &>/dev/null; then
+            systemctl stop hysteria-server
+            systemctl disable hysteria-server
+            rm -f /etc/systemd/system/hysteria-server.service
+            systemctl daemon-reload
+        else
+            rc-service hysteria-server stop
+            rc-update del hysteria-server default
+            rm -f /etc/init.d/hysteria-server
+        fi
+        
+        echo -e "\${GREEN}删除文件...\${PLAIN}"
+        rm -rf /etc/hysteria
+        rm -f /usr/local/bin/hysteria
+        rm -f /usr/bin/hy
+        
+        echo -e "\${GREEN}清空 NAT 转发规则...\${PLAIN}"
+        iptables -t nat -F PREROUTING
+        ip6tables -t nat -F PREROUTING
+        
+        if command -v netfilter-persistent &> /dev/null; then
+            netfilter-persistent save > /dev/null 2>&1
+        elif [ -f "/etc/init.d/iptables" ]; then
+            /etc/init.d/iptables save > /dev/null 2>&1
+        elif command -v service &> /dev/null; then
+            service iptables save > /dev/null 2>&1
+        fi
+
+        echo -e "\${GREEN}卸载完成，环境已恢复。\${PLAIN}"
+        exit 0
+    fi
+}
+
+echo -e "========================="
+echo -e "   Hysteria 2 管理面板   "
+echo -e "========================="
+echo -e "1) 查看运行状态"
+echo -e "2) 查看节点链接"
+echo -e "3) 修改配置文件"
+echo -e "4) 重启服务"
+echo -e "5) 停止服务"
+echo -e "9) ${RED}卸载并清理环境${PLAIN}"
+echo -e "0) 退出"
+echo -e "========================="
+read -p "请选择: " OPTION
+
+case \$OPTION in
+    1) if command -v systemctl &>/dev/null; then systemctl status hysteria-server --no-pager; else /etc/init.d/hysteria-server status; fi ;;
+    2) show_node_info ;;
+    3) nano \$CONFIG_FILE && echo "修改后请重启服务(选项4)" ;;
+    4) 
+       if command -v systemctl &>/dev/null; then 
+           systemctl restart hysteria-server && echo -e "\${GREEN}重启成功\${PLAIN}"; 
+       else 
+           rc-service hysteria-server restart; 
+       fi 
+       ;;
+    5) if command -v systemctl &>/dev/null; then systemctl stop hysteria-server; else rc-service hysteria-server stop; fi; echo "服务已停止" ;;
+    9) uninstall_logic ;;
+    0) exit 0 ;;
+    *) echo "无效选择" ;;
+esac
+EOF
+    chmod +x $CMD_PATH
+}
+
+# ===========================
+# 主安装流程
+# ===========================
+
+clear
+check_sys
+echo -e "${CYAN}Hysteria 2 安装脚本 (UUID密码 | 出站自选 | 多系统)${PLAIN}"
+echo -e "${CYAN}当前系统: ${OS} (${PM})${PLAIN}"
+
+# --- 1. 证书模式 ---
+echo -e "------------------------------------------------"
+echo -e "${YELLOW}[1/5] 证书模式${PLAIN}"
+echo -e "1) 自签证书 (IP直连，无域名，生成 insecure 链接)"
+echo -e "2) 域名证书 (自动申请 ACME，需域名解析)"
+read -p "选择 (默认1): " CERT_MODE
+[[ -z "$CERT_MODE" ]] && CERT_MODE="1"
+
+if [[ "$CERT_MODE" == "2" ]]; then
+    read -p "输入域名: " USER_DOMAIN
+    read -p "输入邮箱: " USER_EMAIL
+else
+    USER_DOMAIN=$(curl -s4 ifconfig.me)
+fi
+
+# --- 2. 端口设置 ---
+echo -e "------------------------------------------------"
+read -p "设置端口 (默认 443): " PORT
+[[ -z "$PORT" ]] && PORT="443"
+
+# --- 3. 伪装域名 ---
+echo -e "------------------------------------------------"
+echo -e "${CYAN}常用伪装域名 (可直接复制):${PLAIN}"
+echo -e "1. ${GREEN}www.bing.com${PLAIN}"
+echo -e "2. ${GREEN}www.tesla.com${PLAIN}"
+echo -e "3. ${GREEN}www.apple.com${PLAIN}"
+echo -e "4. ${GREEN}www.amazon.com${PLAIN}"
+echo -e "------------------------------------------------"
+read -p "请输入伪装域名 (回车默认 www.bing.com): " MASQ_DOMAIN
+[[ -z "$MASQ_DOMAIN" ]] && MASQ_DOMAIN="www.bing.com"
+
+# --- 4. 端口跳跃 ---
+echo -e "------------------------------------------------"
+echo -e "${YELLOW}设置端口跳跃 (Port Hopping)${PLAIN}"
+read -p "起始端口 (默认 35000): " HOP_START
+[[ -z "$HOP_START" ]] && HOP_START="35000"
+read -p "结束端口 (默认 36000): " HOP_END
+[[ -z "$HOP_END" ]] && HOP_END="36000"
+
+# --- 5. 出站网络选择 (新功能) ---
+echo -e "------------------------------------------------"
+echo -e "${YELLOW}[5/5] 出站网络偏好 (Outbound Mode)${PLAIN}"
+echo -e "1) ${GREEN}IPv4 优先${PLAIN} (兼容性最好，适合大多数 VPS)"
+echo -e "2) ${GREEN}IPv6 优先${PLAIN} (适合 v6 线路好的机器)"
+echo -e "3) ${GREEN}自动双栈 (Auto)${PLAIN} (同时启用 v4/v6，自动选择)"
+read -p "请选择 [1-3] (默认1): " NET_CHOICE
+case $NET_CHOICE in
+    2) OUT_MODE="6" ;;
+    3) OUT_MODE="auto" ;;
+    *) OUT_MODE="4" ;;
+esac
+
+# --- 开始安装 ---
+echo -e "${GREEN}>>> 正在安装依赖 ($PM)...${PLAIN}"
+case $PM in
+    apt) $INSTALL_CMD curl openssl iptables iptables-persistent netfilter-persistent ;;
+    dnf|yum) $INSTALL_CMD curl openssl iptables iptables-services; systemctl enable --now iptables ;;
+    apk) $INSTALL_CMD curl openssl iptables ip6tables nano ;;
+esac
+
+echo -e "${GREEN}>>> 下载 Hysteria 2 核心...${PLAIN}"
+HYSTERIA_USER=root bash <(curl -fsSL https://get.hy2.sh/)
+
+echo -e "${GREEN}>>> 生成配置文件...${PLAIN}"
+# 生成 UUID 密码
+PASSWORD=$(cat /proc/sys/kernel/random/uuid)
+OBFS_PASSWORD=$(openssl rand -hex 8)
+mkdir -p $CERT_DIR
+
+# 写入配置文件主体
+cat > $CONFIG_FILE <<EOF
+listen: :$PORT
+
+auth:
+  type: password
+  password: $PASSWORD
+
+obfs:
+  type: salamander
+  salamander:
+    password: $OBFS_PASSWORD
+
+quic:
+  initStreamReceiveWindow: 8388608
+  maxStreamReceiveWindow: 8388608
+  initConnReceiveWindow: 20971520
+  maxConnReceiveWindow: 20971520
+  maxIdleTimeout: 30s
+  maxIncomingStreams: 1024
+  disablePathMTUDiscovery: false
+
+speedTest: true
+disableUDP: false
+udpIdleTimeout: 60s
+EOF
+
+# 根据选择写入证书和出站配置
+if [[ "$CERT_MODE" == "2" ]]; then
+    cat >> $CONFIG_FILE <<EOF
+acme:
+  domains:
+    - $USER_DOMAIN
+  email: $USER_EMAIL
+masquerade:
+  type: proxy
+  proxy:
+    url: https://$MASQ_DOMAIN
+    rewriteHost: true
+  listenHTTPS: :$PORT
+outbounds:
+  - name: direct_out
+    type: direct
+    direct:
+      mode: $OUT_MODE
+      fastOpen: true
+EOF
+else
+    openssl ecparam -genkey -name prime256v1 -out $CERT_DIR/self.key
+    openssl req -new -x509 -days 36500 -key $CERT_DIR/self.key -out $CERT_DIR/self.crt -subj "/CN=$MASQ_DOMAIN"
+    chmod 644 $CERT_DIR/self.key $CERT_DIR/self.crt
+    cat >> $CONFIG_FILE <<EOF
+tls:
+  cert: $CERT_DIR/self.crt
+  key: $CERT_DIR/self.key
+masquerade:
+  type: proxy
+  proxy:
+    url: https://$MASQ_DOMAIN
+    rewriteHost: true
+    insecure: true
+  listenHTTPS: :$PORT
+outbounds:
+  - name: direct_out
+    type: direct
+    direct:
+      mode: $OUT_MODE
+      fastOpen: true
+EOF
+fi
+
+# --- 防火墙设置 ---
+echo -e "${GREEN}>>> 配置 iptables 端口转发...${PLAIN}"
+iptables -t nat -F PREROUTING
+ip6tables -t nat -F PREROUTING
+iptables -t nat -A PREROUTING -p udp --dport $HOP_START:$HOP_END -j REDIRECT --to-ports $PORT
+ip6tables -t nat -A PREROUTING -p udp --dport $HOP_START:$HOP_END -j REDIRECT --to-ports $PORT
+save_firewall
+
+# --- 服务启动 ---
+echo -e "${GREEN}>>> 启动服务...${PLAIN}"
+if [[ "$PM" == "apk" ]]; then
+    cat > /etc/init.d/hysteria-server <<EOF
+#!/sbin/openrc-run
+name="Hysteria 2 Server"
+command="/usr/local/bin/hysteria"
+command_args="server -c /etc/hysteria/config.yaml"
+command_background=true
+pidfile="/run/hysteria-server.pid"
+depend() { need net; after firewall; }
+EOF
+    chmod +x /etc/init.d/hysteria-server
+    rc-update add hysteria-server default
+    rc-service hysteria-server restart
+else
+    systemctl enable hysteria-server
+    systemctl restart hysteria-server
+fi
+
+create_shortcut
+
+echo -e "${GREEN}安装完成！${PLAIN}"
+echo -e "输入 ${YELLOW}hy${PLAIN} 打开管理/卸载面板。"
+sleep 1
+hy <<< "2"
