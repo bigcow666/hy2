@@ -231,6 +231,7 @@ if [[ "$1" == "info" ]]; then
     exit 0
 fi
 
+while true; do
 echo -e "========================="
 echo -e "   Hysteria 2 管理面板   "
 echo -e "========================="
@@ -299,6 +300,8 @@ case $OPTION in
     9) uninstall_logic ;;
     0) exit 0 ;;
     *) echo "无效选择" ;;
+    read
+done
 esac
 EOF
     chmod +x $CMD_PATH
