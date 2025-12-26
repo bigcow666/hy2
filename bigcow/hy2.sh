@@ -151,7 +151,7 @@ uninstall_logic() {
             netfilter-persistent save > /dev/null 2>&1
         elif [ -f "/etc/init.d/iptables" ]; then
             /etc/init.d/iptables save > /dev/null 2>&1
-        fi
+        
         
         echo '#!/bin/bash' > /usr/bin/hy
         echo 'bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2)' >> /usr/bin/hy
