@@ -259,6 +259,8 @@ EOF
     chmod +x $CMD_PATH
 }
 
+function install_hy2() {
+
 # ===========================
 # 主安装流程
 # ===========================
@@ -454,3 +456,34 @@ echo -e "${GREEN}=========================================${PLAIN}"
 echo -e "输入 ${YELLOW}hy${PLAIN} 再次查看此信息。"
 sleep 1
 hy info
+}
+
+function start_menu(){
+    clear
+    echo -e "-------------------------"
+    echo -e "   Hysteria 2 安装脚本"
+    echo -e "-------------------------"
+    echo -e "1. 安装 / 重装"
+    echo -e "2. 卸载"
+    echo -e "3. 打开管理菜单 (hy)"
+    echo -e "0. 退出"
+    read -p "选择: " k
+    case $k in
+        1) install_hy2 ;;
+        2) 
+           # 这里假设你之前把卸载逻辑写在 uninstall_logic 函数里了
+           # 如果没有，就暂时留空或者提示
+           uninstall_logic 
+           ;;
+        3) 
+           if [ -f "/usr/bin/hy" ]; then hy; else echo "未安装"; fi 
+           ;;
+        0) exit 0 ;;
+        *) echo "错误" ;;
+    esac
+}
+
+# 启动
+check_sys
+start_menu
+
