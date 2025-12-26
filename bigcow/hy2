@@ -299,7 +299,7 @@ case $OPTION in
         ;;
 
     9) uninstall_logic ;;
-    10) install_hy2 ;;
+    10) bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/main/bigcow/hy2) ;;
     0) exit 0 ;;
     *) echo "无效选择" ;;
 esac
