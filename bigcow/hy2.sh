@@ -152,15 +152,16 @@ uninstall_logic() {
         elif [ -f "/etc/init.d/iptables" ]; then
             /etc/init.d/iptables save > /dev/null 2>&1
         fi
-    cat > /usr/bin/hy <<EOF
+        cat > /usr/bin/hy <<EOF
 #!/bin/bash
-bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2)
+bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2.sh)
 EOF
-    chmod +x /usr/bin/hy
-    # ----------------------------------------------------
+        # ============================================
 
-    echo -e "${GREEN}卸载完成。${PLAIN}"
-    echo -e "${YELLOW}提示：输入 hy 可再次调出安装菜单。${PLAIN}"
+        chmod +x /usr/bin/hy
+
+        echo -e "${GREEN}卸载完成。${PLAIN}"
+        echo -e "${YELLOW}提示：输入 hy 可再次调出安装菜单。${PLAIN}"
         exit 0
     fi
 }
