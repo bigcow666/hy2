@@ -515,7 +515,35 @@ function start_menu(){
     read -p "选择: " k
     case $k in
         1) install_hy2 ;;
-        2) uninstall_logic ;;
+        2) 
+            echo -e "\033[31m警告：这将删除 Hysteria 2 程序及配置。\033[0m"
+            read -p "确认卸载? (y/n): " confirm < /dev/tty
+            if [[ "$confirm" == "y" ]]; then
+                echo "停止服务..."
+                # 尝试多种停止方式
+                systemctl stop hysteria-server 2>/dev/null
+                systemctl disable hysteria-server 2>/dev/null
+                rm -f /etc/systemd/system/hysteria-server.service
+                rc-service hysteria-server stop 2>/dev/null
+                rm -f /etc/init.d/hysteria-server
+                
+                # 删除文件
+                rm -rf /etc/hysteria
+                rm -f /usr/local/bin/hysteria
+                
+                # 清理防火墙
+                iptables -t nat -F PREROUTING 2>/dev/null
+                ip6tables -t nat -F PREROUTING 2>/dev/null
+                
+                # 重写 hy 命令 (变成在线安装器)
+                echo '#!/bin/bash' > /usr/bin/hy
+                echo 'bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2.sh)' >> /usr/bin/hy
+                chmod +x /usr/bin/hy
+                
+                echo -e "\033[32m卸载完成。\033[0m"
+                exit 0
+            fi
+            ;;
         3) 
            if [ -f "/usr/bin/hy" ]; then hy; else echo "未安装"; fi 
            ;;
@@ -523,7 +551,6 @@ function start_menu(){
         *) echo "错误" ;;
     esac
 }
-
 # 启动
 check_sys
 start_menu
