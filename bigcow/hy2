@@ -384,8 +384,8 @@ read -p "结束端口 (默认 36000): " HOP_END < /dev/tty
 # --- 5. 出站网络 ---
 echo -e "------------------------------------------------"
 echo -e "${YELLOW}[5/6] 出站网络偏好${PLAIN}"
-echo -e "1) IPv4 优先"
-echo -e "2) IPv6 优先"
+echo -e "1) 仅IPv4出站(默认）"
+echo -e "2) 仅IPv6出站"
 echo -e "3) 自动双栈 (Auto)"
 read -p "请选择 (默认1): " NET_CHOICE < /dev/tty
 case $NET_CHOICE in
