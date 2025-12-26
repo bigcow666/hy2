@@ -152,10 +152,9 @@ uninstall_logic() {
         elif [ -f "/etc/init.d/iptables" ]; then
             /etc/init.d/iptables save > /dev/null 2>&1
         fi
-        cat > /usr/bin/hy <<EOF
-#!/bin/bash
-bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2.sh)
-EOF
+        
+        echo '#!/bin/bash' > /usr/bin/hy
+        echo 'bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2)' >> /usr/bin/hy
         # ============================================
 
         chmod +x /usr/bin/hy
