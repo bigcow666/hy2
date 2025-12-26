@@ -244,7 +244,7 @@ echo -e "6) 设置 DNS/DoH (防污染)需手动开启"
 echo -e "7) 更新 Hysteria 2 核心"
 echo -e "8) 更新脚本 (管理面板)"
 echo -e "9) ${RED}卸载并清理环境${PLAIN}"
-echo -e "9) ${RED}重新安装卸载后用${PLAIN}"
+echo -e "10) ${RED}重新安装卸载后用${PLAIN}"
 echo -e "0) 退出"
 echo -e "========================="
 read -p "请选择: " OPTION < /dev/tty
