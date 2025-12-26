@@ -274,7 +274,7 @@ case $OPTION in
         TARGET_FILE="/root/hy2.sh"
 
         # 下载最新脚本
-        wget -N --no-check-certificate https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2 -O "$TARGET_FILE"
+        wget -N --no-check-certificate https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2.sh -O "$TARGET_FILE"
         
         # 判断下载是否成功
         if [ $? -ne 0 ]; then
