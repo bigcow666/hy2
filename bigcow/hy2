@@ -272,7 +272,7 @@ case $OPTION in
         echo -e "${GREEN}>>> 正在更新管理脚本...${PLAIN}"
         
         # 强制指定下载到 /root 目录，这是 Linux VPS 的标准目录
-        TARGET_FILE="/root/hy2.sh"
+        TARGET_FILE="/root/hy2"
 
         # 下载最新脚本
         wget -N --no-check-certificate https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2 -O "$TARGET_FILE"
@@ -376,9 +376,15 @@ echo -e "2) IPv6 优先"
 echo -e "3) 自动双栈 (Auto)"
 read -p "请选择 (默认1): " NET_CHOICE < /dev/tty
 case $NET_CHOICE in
-    2) OUT_MODE="6" ;;
-    3) OUT_MODE="auto" ;;
-    *) OUT_MODE="4" ;;
+    2) OUT_MODE="6"
+       FAST_MOD="true"
+       ;;
+    3) OUT_MODE="auto"
+       FAST_MOD="true"
+       ;;
+    *) OUT_MODE="4"
+       FAST_MOD="false"
+       ;;
 esac
 
 # --- 6. 节点名称 ---
@@ -443,7 +449,7 @@ outbounds:
     type: direct
     direct:
       mode: $OUT_MODE
-      fastOpen: true
+      fastOpen: $FAST_MOD
 EOF
 else
     openssl ecparam -genkey -name prime256v1 -out $CERT_DIR/self.key
