@@ -74,7 +74,7 @@ SAVE_START="${HOP_START}"
 SAVE_END="${HOP_END}"
 EOF
 
-    # 第二段：写入核心逻辑 (使用 'EOF' 阻止变量转义，保证脚本内容原样写入)
+    # 第二段：写入核心逻辑 (使用 'EOF' 阻止变量转义)
     cat >> $CMD_PATH <<'EOF'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -84,42 +84,58 @@ PLAIN='\033[0m'
 show_node_info() {
     echo -e "${GREEN}>>> 节点信息 ${PLAIN}"
 
-    # 提取端口
-    MPORT_RANGE="${SAVE_START}-${SAVE_END}"
+    # 1. 处理跳跃端口逻辑
+    # 如果保存了起始和结束端口，则构造参数和提示信息
+    MPORT_PARAM=""
+    HOPPING_MSG=""
+    
+    if [[ -n "$SAVE_START" ]] && [[ -n "$SAVE_END" ]]; then
+        # 构造 URL 参数 (用于生成链接)
+        MPORT_PARAM="&mport=${SAVE_START}-${SAVE_END}"
+        # 构造提示信息 (用于显示)
+        HOPPING_MSG="当前跳跃端口号是 ${SAVE_START}:${SAVE_END} 如果导入不全请手动配置"
+    fi
+
+    # 2. 提取基础信息
+    # 提取监听端口 (主连接端口)
     PORT=$(grep "^listen:" $CONFIG_FILE | awk '{print $2}' | tr -d ':')
-    # 提取认证密码 (找到auth下一行的password)
+    # 提取认证密码
     PASS=$(grep -A 5 "auth:" $CONFIG_FILE | grep "password:" | head -n 1 | awk '{print $2}')
-    # 提取混淆密码 (找到salamander下一行的password)
+    # 提取混淆密码
     OBFS_PASS=$(grep -A 5 "salamander:" $CONFIG_FILE | grep "password:" | head -n 1 | awk '{print $2}')
+    
     # 获取本机IP
     SERVER_IP=$(curl -s4 m.ip138.com | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
-    # 如果没取到IP，尝试另一个源
     if [[ -z "$SERVER_IP" ]]; then SERVER_IP=$(curl -s4 ifconfig.me); fi
     
-    # 默认节点名称
-    NODE_NAME="Hysteria2"
+    # 节点名称兜底
+    [[ -z "$NODE_NAME" ]] && NODE_NAME="Hysteria2"
 
-    # 2. 判断模式并输出
+    # 3. 生成链接并输出
     if grep -q "insecure: true" $CONFIG_FILE; then
         # === 自签模式 ===
         FAKE_URL=$(grep "url:" $CONFIG_FILE | head -n 1 | awk '{print $2}')
-        # 提取网址中的域名作为 SNI
         SNI_VAL=$(echo $FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*$||')
         
         echo -e "模式: ${YELLOW}自签证书 (IP直连)${PLAIN}"
         echo -e "IP:   ${YELLOW}${SERVER_IP}${PLAIN}"
         echo -e "端口: ${YELLOW}${PORT}${PLAIN}"
         echo -e "密码: ${YELLOW}${PASS}${PLAIN}"
+        echo -e "salamander伪装密码: ${YELLOW}${OBFS_PASS}${PLAIN}"
+        echo -e "当前跳跃端口号是 ${SAVE_START}:${SAVE_END}"
         
+        # 链接中加入了 ${MPORT_PARAM}
         LINK="hysteria2://${PASS}@${SERVER_IP}:${PORT}?peer=${SNI_VAL}&insecure=1&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}${MPORT_PARAM}#${NODE_NAME}"
+        
         echo -e "${CYAN}[节点链接]${PLAIN}"
         echo -e "${YELLOW}${LINK}${PLAIN}"
-        echo -e "${YELLOW}${MPORT_PARAM}${PLAIN}"
-
+        # 输出你要求的提示信息
+        if [[ -n "$HOPPING_MSG" ]]; then
+            echo -e "${RED}${HOPPING_MSG}${PLAIN}"
+        fi
         
     else
         # === 域名模式 ===
-        # 提取域名 
         DOMAIN=$(grep -A 1 "domains:" $CONFIG_FILE | tail -n 1 | tr -d ' -')
         SNI_VAL=$DOMAIN
         
@@ -128,7 +144,10 @@ show_node_info() {
         echo -e "IP:   ${YELLOW}${SERVER_IP}${PLAIN}"
         echo -e "端口: ${YELLOW}${PORT}${PLAIN}"
         echo -e "密码: ${YELLOW}${PASS}${PLAIN}"
+        echo -e "salamander伪装密码: ${YELLOW}${OBFS_PASS}${PLAIN}"
+        echo -e "当前跳跃端口号是 ${SAVE_START}:${SAVE_END}"
         
+        # 链接中加入了 ${MPORT_PARAM}
         LINK_DOMAIN="hysteria2://${PASS}@${DOMAIN}:${PORT}?peer=${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}${MPORT_PARAM}#${NODE_NAME}"
         LINK_IP="hysteria2://${PASS}@${SERVER_IP}:${PORT}?peer=${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}${MPORT_PARAM}#${NODE_NAME}_IP"
 
@@ -137,10 +156,16 @@ show_node_info() {
         echo -e ""
         echo -e "${CYAN}2. IP 节点 (备用):${PLAIN}"
         echo -e "${YELLOW}${LINK_IP}${PLAIN}"
-        echo -e "${YELLOW}${MPORT_PARAM}${PLAIN}"
+        
+        # 输出你要求的提示信息
+        if [[ -n "$HOPPING_MSG" ]]; then
+            echo -e "${RED}${HOPPING_MSG}${PLAIN}"
+        fi
     fi
     echo ""
 }
+EOF
+
 
 uninstall_logic() {
     echo -e "${RED}警告：这将删除 Hysteria2 程序、配置及防火墙规则。${PLAIN}"
