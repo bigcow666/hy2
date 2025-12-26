@@ -80,27 +80,41 @@ YELLOW='\033[0;33m'
 PLAIN='\033[0m'
 
 show_node_info() {
-    echo -e "${GREEN}>>> 当前节点配置 ${PLAIN}"
+    echo -e "${GREEN}>>> 节点信息 ${PLAIN}"
+    
+    # 提取端口
     PORT=$(grep "^listen:" $CONFIG_FILE | awk '{print $2}' | tr -d ':')
+    # 提取认证密码 (找到auth下一行的password)
     PASS=$(grep -A 5 "auth:" $CONFIG_FILE | grep "password:" | head -n 1 | awk '{print $2}')
-    OBFS_PASS=$(grep -A 2 "salamander:" $CONFIG_FILE | grep "password:" | head -n 1 | awk '{print $2}')
-    SERVER_IP=$(curl -s4 ifconfig.me)
+    # 提取混淆密码 (找到salamander下一行的password)
+    OBFS_PASS=$(grep -A 5 "salamander:" $CONFIG_FILE | grep "password:" | head -n 1 | awk '{print $2}')
+    # 获取本机IP
+    SERVER_IP=$(curl -s4 m.ip138.com | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
+    # 如果没取到IP，尝试另一个源
+    if [[ -z "$SERVER_IP" ]]; then SERVER_IP=$(curl -s4 ifconfig.me); fi
+    
+    # 默认节点名称
+    NODE_NAME="Hysteria2"
 
+    # 2. 判断模式并输出
     if grep -q "insecure: true" $CONFIG_FILE; then
-        # --- 自签模式 ---
+        # === 自签模式 ===
         FAKE_URL=$(grep "url:" $CONFIG_FILE | head -n 1 | awk '{print $2}')
+        # 提取网址中的域名作为 SNI
         SNI_VAL=$(echo $FAKE_URL | sed -e 's|^[^/]*//||' -e 's|/.*$||')
         
         echo -e "模式: ${YELLOW}自签证书 (IP直连)${PLAIN}"
         echo -e "IP:   ${YELLOW}${SERVER_IP}${PLAIN}"
         echo -e "端口: ${YELLOW}${PORT}${PLAIN}"
         echo -e "密码: ${YELLOW}${PASS}${PLAIN}"
-        echo -e "------------------------------------------------"
+        
         LINK="hysteria2://${PASS}@${SERVER_IP}:${PORT}?peer=${SNI_VAL}&insecure=1&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}#${NODE_NAME}"
         echo -e "${CYAN}[节点链接]${PLAIN}"
         echo -e "${YELLOW}${LINK}${PLAIN}"
+        
     else
-        # --- 域名模式 ---
+        # === 域名模式 ===
+        # 提取域名 
         DOMAIN=$(grep -A 1 "domains:" $CONFIG_FILE | tail -n 1 | tr -d ' -')
         SNI_VAL=$DOMAIN
         
@@ -109,7 +123,6 @@ show_node_info() {
         echo -e "IP:   ${YELLOW}${SERVER_IP}${PLAIN}"
         echo -e "端口: ${YELLOW}${PORT}${PLAIN}"
         echo -e "密码: ${YELLOW}${PASS}${PLAIN}"
-        echo -e "------------------------------------------------"
         
         LINK_DOMAIN="hysteria2://${PASS}@${DOMAIN}:${PORT}?peer=${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}#${NODE_NAME}"
         LINK_IP="hysteria2://${PASS}@${SERVER_IP}:${PORT}?peer=${SNI_VAL}&insecure=0&obfs=salamander&obfs-password=${OBFS_PASS}&sni=${SNI_VAL}#${NODE_NAME}_IP"
