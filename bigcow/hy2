@@ -158,6 +158,67 @@ uninstall_logic() {
     fi
 }
 
+# ====== 在这里插入 DNS 设置函数 ======
+set_dns() {
+    echo -e "${GREEN}正在配置防污染 DNS (DoH)...${PLAIN}"
+    echo -e "1. Cloudflare (1.1.1.1)"
+    echo -e "2. Google (8.8.8.8)"
+    echo -e "3. Quad9 (9.9.9.9)"
+    echo -e "4. 恢复默认"
+    read -p "请选择: " dns_opt
+
+    # 这里直接用脚本顶部的变量
+    CFG="/etc/hysteria/config.yaml"
+    
+    # 清理旧配置
+    if grep -q "^resolver:" "$CFG"; then sed -i '/^resolver:/,+8d' "$CFG"; fi
+
+    case $dns_opt in
+        1) cat <<CONFIG >> "$CFG"
+resolver:
+  type: https
+  https:
+    addr: 1.1.1.1:443
+    timeout: 10s
+    sni: cloudflare-dns.com
+    insecure: false
+CONFIG
+        ;;
+        2) cat <<CONFIG >> "$CFG"
+resolver:
+  type: https
+  https:
+    addr: 8.8.8.8:443
+    timeout: 10s
+    sni: dns.google
+    insecure: false
+CONFIG
+        ;;
+        3) cat <<CONFIG >> "$CFG"
+resolver:
+  type: https
+  https:
+    addr: 9.9.9.9:443
+    timeout: 10s
+    sni: dns.quad9.net
+    insecure: false
+CONFIG
+        ;;
+        4) echo "已恢复默认" ;;
+        *) echo "错误" ; return ;;
+    esac
+    
+    # 重启服务
+    if command -v systemctl &>/dev/null; then 
+        systemctl restart hysteria-server
+    else 
+        rc-service hysteria-server restart
+    fi
+    echo -e "${GREEN}设置完成，服务已重启${PLAIN}"
+}
+# ===================================
+
+
 if [[ "$1" == "info" ]]; then
     show_node_info
     exit 0
@@ -171,6 +232,7 @@ echo -e "2) 查看节点链接"
 echo -e "3) 修改配置文件"
 echo -e "4) 重启服务"
 echo -e "5) 停止服务"
+echo -e "6) 设置 DNS/DoH (防污染)需手动开启" 
 echo -e "9) ${RED}卸载并清理环境${PLAIN}"
 echo -e "0) 退出"
 echo -e "========================="
@@ -188,6 +250,7 @@ case $OPTION in
        fi 
        ;;
     5) if command -v systemctl &>/dev/null; then systemctl stop hysteria-server; else rc-service hysteria-server stop; fi; echo "服务已停止" ;;
+    6) set_dns ;;
     9) uninstall_logic ;;
     0) exit 0 ;;
     *) echo "无效选择" ;;
