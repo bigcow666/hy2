@@ -3,6 +3,7 @@
 # ==========================================
 # Hysteria 2 终极安装脚本 (定制修改版)
 # 特性：精准防火墙管理 | 端口跳跃记忆 | 零暴力清空
+# https://github.com/bigcow666
 # ==========================================
 
 # 颜色定义
@@ -220,7 +221,7 @@ uninstall_logic() {
         
         # 恢复安装脚本为在线模式
         echo '#!/bin/bash' > /usr/bin/hy
-        echo 'bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2)' >> /usr/bin/hy
+        echo 'bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/main/bigcow/hy2)' >> /usr/bin/hy
         chmod +x /usr/bin/hy
 
         echo -e "${GREEN}卸载完成。${PLAIN}"
@@ -318,7 +319,7 @@ case $OPTION in
     8)
         echo -e "${GREEN}>>> 正在更新管理脚本...${PLAIN}"
         TARGET_FILE="/root/hy2"
-        wget -N --no-check-certificate https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2 -O "$TARGET_FILE"
+        wget -N --no-check-certificate https://raw.githubusercontent.com/bigcow666/hy2/main/bigcow/hy2 -O "$TARGET_FILE"
         if [ $? -ne 0 ]; then
             echo -e "${RED}更新失败！无法连接到 GitHub。${PLAIN}"
             exit 1
@@ -579,7 +580,7 @@ function start_menu(){
                 rm -f /usr/local/bin/hysteria
                 
                 echo '#!/bin/bash' > /usr/bin/hy
-                echo 'bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/refs/heads/main/bigcow/hy2.sh)' >> /usr/bin/hy
+                echo 'bash <(curl -fsSL https://raw.githubusercontent.com/bigcow666/hy2/main/bigcow/hy2.sh)' >> /usr/bin/hy
                 chmod +x /usr/bin/hy
                 
                 echo -e "\033[32m卸载完成。\033[0m"
